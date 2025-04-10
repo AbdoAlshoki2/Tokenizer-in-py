@@ -1,5 +1,10 @@
 from typing import Union
-def get_stats(byte_ids: list  , counter: dict = {}) -> dict:
+import os
+import regex
+
+GPT_PATTERN = r"""'(?i:[sdmt]|ll|ve|re)|[^\r\n\p{L}\p{N}]?+\p{L}+|\p{N}{1,3}| ?[^\s\p{L}\p{N}]++[\r\n]*|\s*[\r\n]|\s+(?!\S)|\s+"""
+
+def get_stats(byte_ids: list, counter: dict = None) -> dict:
     """
     function to count the frequancy of each adjacent pair of letters in a given text.
     support updating existing counter.
@@ -15,8 +20,11 @@ def get_stats(byte_ids: list  , counter: dict = {}) -> dict:
     dict
         counter
     """
+    # Initialize it properly
+    if counter is None:
+        counter = {}
 
-    for pair in zip(byte_ids , byte_ids[1:]):
+    for pair in zip(byte_ids, byte_ids[1:]):
         counter[pair] = counter.get(pair, 0) + 1
 
     return counter
@@ -82,9 +90,9 @@ def bpe(text : Union[str, list[str]],
     text = [text] if isinstance(text,str) else text
     counts = {}
     for t in text:
-        t = t.encode("utf-8")
-        ids.append(list(t))
-        counts = get_stats(list(t),counts)
+        t_bytes = t.encode("utf-8")
+        ids.append(list(t_bytes))
+        counts = get_stats(list(t_bytes),counts)
 
     i = 0
     while i < vocab_size - 256:
@@ -133,40 +141,127 @@ def build_vocab(merges: dict):
 
 
     
-def encode(text: Union[str, list[str]], merges: dict):
+def encode(text: Union[str, list[str]], merges: dict) -> list:
     """
     function to encode a given text or list of texts to known tokens.
+    Parameters:
+    -----------
+    text : Union[str, list[str]]
+        the text or list of texts to be encoded
+    merges : dict
+        merged tokens map
+    
+    Returns:
+    --------
+    ids : list
+        the encoded text byte values
     """
-    text = [text] if isinstance(text,str) else text
+    text = [text] if isinstance(text, str) else text
     ids = []
     for t in text:
+
         byte_ids = list(t.encode("utf-8"))
-        cnt = 0
+        
+
         while len(byte_ids) >= 2:
-            counts = get_stats(byte_ids , {})
-            pair = min(counts , key= lambda k: merges.get(k, float("inf")))
+            counts = get_stats(byte_ids, None)  
+            pair = min(counts, key=lambda k: merges.get(k, float("inf")))
 
             if pair not in merges:
                 break
             
             byte_ids = merge(byte_ids, pair, merges[pair])
 
-
         ids.append(byte_ids)
 
     return ids
 
-
-def decode(ids: Union[list[int], list[list[int]]] , vocab: dict):
+def decode(ids: Union[list[int], list[list[int]]], vocab: dict) ->list:
     """
     function to decode a given list of ids or list of list of ids to text.
+    Parameters:
+    -----------
+    ids: Union[list[int], list[list[int]]]
+        the token values list to be decoded
+    vocab: dict
+        the vocabulary mapping (token , bytes)
+
+    Returns:
+    --------
+    text: list
+        the decoded text in utf-8
     """
     text = []
-    if isinstance(ids[0],list):
+    if isinstance(ids[0], list):
         for i in ids:
-            text.append("".join([vocab[idx].decode("utf-8",errors="replace") for idx in i]))
+            
+            decoded = b''.join([vocab[idx] for idx in i]).decode("utf-8", errors="replace")
+            text.append(decoded)
     else:
-        text.append("".join([vocab[idx].decode("utf-8",errors="replace") for idx in ids]))
+
+        decoded = b''.join([vocab[idx] for idx in ids]).decode("utf-8", errors="replace")
+        text.append(decoded)
 
     return text
+
+def read_raw_text(path :str) -> list[str]:
+    """
+    function to read raw text from a given path.
+    Parameters:
+    -----------
+    path: str
+        the path to a file or directory
+    
+    Returns:
+    --------
+    texts: list
+        the file(s) contents in utf-8
+    """
+    assert os.path.exists(path), "path does not exist"
+    texts = []
+    if os.path.isdir(path):
+        for root, dirs, files in os.walk(path):
+            for file in files:
+                if file.endswith(".txt"): # reads .txt files
+                    with open(os.path.join(root, file), "r", encoding="utf-8") as f:
+                        texts.append(f.read())
+
+    elif os.path.isfile(path) and path.endswith(".txt"): # reads .txt files
+        with open(path, "r", encoding="utf-8") as f:
+            texts.append(f.read())
+
+    return texts
+
+def read_files(path :str , match_pattern : Union[bool , str]=False) -> list[str]:
+    """
+    function to read files and allow regex pattern splitting.
+    this function uses GPT-4 pattern matching.
+    Parameters:
+    -----------
+    path: str
+        the path to a file or directory
+
+    match_pattern : Union[bool , str]
+        the regex pattern (if type is str), or to use the defined pattern or not (if bool)
+    
+    Returns:
+    --------
+    texts: list
+        the file(s) contents in utf-8
+    """
+    texts = read_raw_text(path)
+    new_texts = []
+    if isinstance(match_pattern,bool):
+        if match_pattern:
+            compiled = regex.compile(GPT_PATTERN)
+            for text in texts:
+                new_texts.append(compiled.findall(text))
+        else:
+            return texts
+    else:
+        compiled = regex.compile(match_pattern)
+        for text in texts:
+            new_texts.append(compiled.findall(text))
+
+    return new_texts
 
