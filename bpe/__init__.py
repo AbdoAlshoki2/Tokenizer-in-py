@@ -1,1 +1,1 @@
-from .base import bpe, build_vocab , encode, decode , read_files
+from .BPETokenizer import BPETokenizer

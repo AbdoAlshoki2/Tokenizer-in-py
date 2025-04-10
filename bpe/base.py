@@ -1,6 +1,7 @@
 from typing import Union
 import os
 import regex
+import unicodedata
 
 GPT_PATTERN = r"""'(?i:[sdmt]|ll|ve|re)|[^\r\n\p{L}\p{N}]?+\p{L}+|\p{N}{1,3}| ?[^\s\p{L}\p{N}]++[\r\n]*|\s*[\r\n]|\s+(?!\S)|\s+"""
 
@@ -196,10 +197,12 @@ def decode(ids: Union[list[int], list[list[int]]], vocab: dict) ->list:
         for i in ids:
             
             decoded = b''.join([vocab[idx] for idx in i]).decode("utf-8", errors="replace")
+            decoded = replace_control_characters(decoded)
             text.append(decoded)
     else:
 
         decoded = b''.join([vocab[idx] for idx in ids]).decode("utf-8", errors="replace")
+        decoded = replace_control_characters(decoded)
         text.append(decoded)
 
     return text
@@ -242,7 +245,7 @@ def read_files(path :str , match_pattern : Union[bool , str]=False) -> list[str]
         the path to a file or directory
 
     match_pattern : Union[bool , str]
-        the regex pattern (if type is str), or to use the defined pattern or not (if bool)
+        the regex pattern (if type is str), or to use the defined pattern or not (if)
     
     Returns:
     --------
@@ -265,3 +268,21 @@ def read_files(path :str , match_pattern : Union[bool , str]=False) -> list[str]
 
     return new_texts
 
+def replace_control_characters(s: str) -> str:
+    # we don't want to print control characters
+    # which distort the output (e.g. \n or much worse)
+    # https://stackoverflow.com/questions/4324790/removing-control-characters-from-a-string-in-python/19016117#19016117
+    # http://www.unicode.org/reports/tr44/#GC_Values_Table
+    chars = []
+    for ch in s:
+        if unicodedata.category(ch)[0] != "C":
+            chars.append(ch) # this character is ok
+        else:
+            chars.append(f"\\u{ord(ch):04x}") # escape
+    return "".join(chars)
+
+def render_token(t: bytes) -> str:
+    # pretty print a token, escaping control characters
+    s = t.decode('utf-8', errors='replace')
+    s = replace_control_characters(s)
+    return s
