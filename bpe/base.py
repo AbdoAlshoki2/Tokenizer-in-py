@@ -164,9 +164,9 @@ def decode(ids: Union[list[int], list[list[int]]] , vocab: dict):
     text = []
     if isinstance(ids[0],list):
         for i in ids:
-            text.append("".join([vocab[idx].decode("utf-8") for idx in i]))
+            text.append("".join([vocab[idx].decode("utf-8",errors="replace") for idx in i]))
     else:
-        text.append("".join([vocab[idx].decode("utf-8") for idx in ids]))
+        text.append("".join([vocab[idx].decode("utf-8",errors="replace") for idx in ids]))
 
     return text
 
